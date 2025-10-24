@@ -1,0 +1,27 @@
+# IDE settings (PyCharm/IntelliJ)
+.idea/
+*.iml
+
+# Project documentation and guide (do not commit)
+docs/
+AGENTS.md
+README.md
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Packaging/build artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Jupyter/OS noise
+.ipynb_checkpoints/
+.DS_Store
+
