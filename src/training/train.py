@@ -13,7 +13,7 @@ def build_pipeline():
     """Builds the TF-IDF and Logistic Regression pipeline."""
     pipe = Pipeline([
         ("tfidf", TfidfVectorizer(preprocessor=clean_text, max_features=50000, ngram_range=(1, 2))),
-        ("clf", LogisticRegression(max_iter=1000, n_jobs=-1))  # Use all available cores
+        ("clf", LogisticRegression(max_iter=1000))
     ])
     return pipe
 
