@@ -2,8 +2,7 @@ import argparse
 import joblib
 import pandas as pd
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-from .preprocess import clean_text
-from .data import load_dataset, train_val_split
+from src.data_loader import load_dataset, train_val_split
 
 def main(args):
     df = load_dataset(args.csv_path)
