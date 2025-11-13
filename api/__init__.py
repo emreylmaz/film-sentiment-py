@@ -1,0 +1,5 @@
+"""
+FastAPI servisi modülleri
+"""
+
+
