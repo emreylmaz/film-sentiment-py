@@ -36,6 +36,39 @@ Format: [Semantic Versioning](https://semver.org/lang/tr/)
 
 ---
 
+## [1.0.1] - 2025-11-18
+
+### ✅ Tamamlanan
+- **Model Eğitimi:** Model başarıyla eğitildi
+  - Logistic Regression: Accuracy %89.05, F1 Score %89.15
+  - Random Forest: Accuracy %86.98, F1 Score %87.11
+  - En iyi model: Logistic Regression (F1: 0.8915)
+  - ROC-AUC: %95.83 (Mükemmel performans)
+- **Model Dosyaları:** model.pkl, vectorizer.pkl, metadata.json oluşturuldu
+
+### 🐛 Düzeltilenler
+- **Path Sorunları:** Config ve data dosyalarının path hataları düzeltildi
+  - Script artık herhangi bir dizinden çalıştırılabilir
+  - Config.yaml, data/, models/, logs/ path'leri absolute path'e dönüştürülüyor
+- **Model Kaydetme:** Model karşılaştırma ve kaydetme hataları düzeltildi
+  - evaluate_model fonksiyonu model_name'i metrics'e ekliyor
+  - Model isim mapping tablosu eklendi
+  - KeyError: 'unknown' hatası çözüldü
+
+### 📊 Raporlar
+- Model performans raporu güncellendi (reports/model_rapor.md)
+- Gerçek metrikler eklendi
+- TODO tracking güncellendi
+
+### 🎯 Performans
+- Tüm hedefler aşıldı:
+  - Accuracy: %89.05 > %85 hedef ✅
+  - F1 Score: %89.15 > %85 hedef ✅
+  - ROC-AUC: %95.83 > %90 hedef ✅
+  - Training Time: 29.63 saniye ✅
+
+---
+
 ## [1.0.0] - 2025-11-05
 
 ### ✨ Eklenenler
