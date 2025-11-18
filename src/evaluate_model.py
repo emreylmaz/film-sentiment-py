@@ -272,6 +272,9 @@ def evaluate_model(
     # Metrikleri hesapla
     metrics = evaluator.calculate_metrics(y_test, y_pred, y_pred_proba)
     
+    # Model adını metrics'e ekle
+    metrics['model_name'] = model_name
+    
     # Classification report
     print(f"\n=== {model_name} - Sınıflandırma Raporu ===")
     print(evaluator.get_classification_report(y_test, y_pred))

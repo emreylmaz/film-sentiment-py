@@ -40,12 +40,43 @@ class SentimentModelTrainer:
         Args:
             config_path: Konfigürasyon dosyası yolu
         """
-        # Config yükle
+        # Config yükle - proje root dizinine göre path ayarla
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(script_dir)
+        
+        if not os.path.isabs(config_path):
+            # Relative path ise, proje root'una göre ayarla
+            config_path = os.path.join(project_root, config_path)
+        
         with open(config_path, 'r', encoding='utf-8') as f:
             self.config = yaml.safe_load(f)
         
+        # Config içindeki relative path'leri project root'a göre düzelt
+        
+        # Data path'ini düzelt
+        if not os.path.isabs(self.config['data']['raw_path']):
+            self.config['data']['raw_path'] = os.path.join(
+                project_root, 
+                self.config['data']['raw_path']
+            )
+        
+        # Model save path'ini düzelt
+        if not os.path.isabs(self.config['training']['model_save_path']):
+            self.config['training']['model_save_path'] = os.path.join(
+                project_root,
+                self.config['training']['model_save_path']
+            )
+        
+        # Log path'ini düzelt
+        if not os.path.isabs(self.config['training']['log_path']):
+            self.config['training']['log_path'] = os.path.join(
+                project_root,
+                self.config['training']['log_path']
+            )
+        
         logger.info("SentimentModelTrainer başlatıldı")
         logger.info(f"Konfigürasyon: {config_path}")
+        logger.info(f"Veri path: {self.config['data']['raw_path']}")
         
         self.preprocessor = None
         self.models = {}
@@ -299,8 +330,20 @@ def main():
         results = trainer.train_all_models()
         
         # En iyi modeli kaydet
-        best_model_name = results['best_model'].lower().replace(' ', '_')
-        trainer.save_model(model_name=best_model_name)
+        # Model isim mapping'i (display name -> key name)
+        model_name_mapping = {
+            'Logistic Regression': 'logistic_regression',
+            'Random Forest': 'random_forest',
+            'Unknown': 'logistic_regression'  # Fallback
+        }
+        
+        best_model_display_name = results['best_model']
+        best_model_key = model_name_mapping.get(
+            best_model_display_name,
+            best_model_display_name.lower().replace(' ', '_')
+        )
+        
+        trainer.save_model(model_name=best_model_key)
         
         # Özet
         total_time = time.time() - start_time
