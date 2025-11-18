@@ -1,0 +1,47 @@
+{
+  "model_name": "logistic_regression",
+  "model_type": "LogisticRegression",
+  "version": "1.0.0",
+  "training_date": "2025-11-18 19:28:56",
+  "metrics": {
+    "accuracy": 0.8905,
+    "precision": 0.8835199371439796,
+    "recall": 0.8996,
+    "f1_score": 0.8914874640769002,
+    "roc_auc": 0.9583472799999999,
+    "confusion_matrix": [
+      [
+        4407,
+        593
+      ],
+      [
+        502,
+        4498
+      ]
+    ],
+    "true_negatives": 4407,
+    "false_positives": 593,
+    "false_negatives": 502,
+    "true_positives": 4498,
+    "total_samples": 10000,
+    "model_name": "Logistic Regression"
+  },
+  "config": {
+    "preprocessing": {
+      "max_features": 5000,
+      "ngram_range": [
+        1,
+        2
+      ],
+      "min_df": 5,
+      "max_df": 0.8
+    },
+    "model_params": {
+      "C": 1.0,
+      "max_iter": 1000,
+      "solver": "lbfgs",
+      "n_jobs": -1
+    }
+  },
+  "vocabulary_size": 5000
+}
