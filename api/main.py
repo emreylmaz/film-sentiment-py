@@ -316,6 +316,9 @@ async def predict_sentiment(request: PredictionRequest):
         
         return result
         
+    except HTTPException:
+        # HTTPException'ları olduğu gibi geçir (503, 400, vb.)
+        raise
     except Exception as e:
         logger.error(f"Tahmin hatası: {str(e)}")
         raise HTTPException(
