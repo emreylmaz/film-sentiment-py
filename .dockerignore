@@ -47,4 +47,14 @@ Thumbs.db
 # Plan dosyası
 *.plan.md
 
+# Docker Compose (image içine gerekmiyor)
+docker-compose*.yml
+
+# Environment files (güvenlik)
+.env
+.env.*
+
+# Notebooks (production'da gerekmiyor)
+notebooks/
+
 
