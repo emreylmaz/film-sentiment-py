@@ -2,7 +2,7 @@
 
 # Veri Ayarları
 data:
-  raw_path: "data/IMDB Dataset.csv"
+  raw_data_path: "data/IMDB Dataset.csv"
   test_size: 0.2
   random_state: 42
 
@@ -39,7 +39,39 @@ api:
   host: "0.0.0.0"
   port: 8000
   title: "IMDB Sentiment Analizi API"
-  version: "1.0.0"
-  description: "Film yorumları için sentiment analizi servisi"
+  version: "2.0.0"
+  description: "Film yorumları için sentiment analizi servisi (JWT Auth + MongoDB)"
+
+# MongoDB Ayarları
+database:
+  url: "mongodb://localhost:27017"
+  name: "imdb_sentiment_db"
+  # Alternatif: MongoDB Atlas
+  # url: "mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority"
+
+# JWT Authentication Ayarları
+jwt:
+  secret_key: "CHANGE-THIS-TO-A-STRONG-RANDOM-SECRET-KEY-IN-PRODUCTION"
+  algorithm: "HS256"
+  access_token_expire_minutes: 1440  # 24 saat
+
+# CORS Ayarları
+cors:
+  allowed_origins:
+    - "http://localhost:3000"      # Next.js development server
+    - "http://localhost:3001"      # Alternatif port
+    - "http://127.0.0.1:3000"
+  # Production'da kendi domain'inizi ekleyin:
+  # - "https://your-frontend-app.com"
+
+# Redis Ayarları (JWT Blacklist & Caching)
+redis:
+  url: "redis://localhost:6379"
+  password: null  # Redis password (opsiyonel)
+  # Redis Cloud/Upstash örneği:
+  # url: "redis://default:password@redis-url:port"
+  db: 0  # Redis database number
+  socket_timeout: 5
+  socket_connect_timeout: 5
 
 
