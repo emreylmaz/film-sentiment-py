@@ -11,11 +11,16 @@ Bu proje, 50,000 IMDB film yorumu üzerinde sentiment analizi (pozitif/negatif s
 - ✅ 50,000 IMDB film yorumu sentiment analizi
 - ✅ TF-IDF ile metin vektörizasyonu
 - ✅ Multiple model karşılaştırma (Logistic Regression, Random Forest)
+- ✅ **JWT Authentication & Authorization**
+- ✅ **Redis JWT Blacklist** (Gerçek logout sistemi - Best Practice)
+- ✅ **MongoDB ile Prompt Logging**
+- ✅ **Kullanıcı Yönetimi (Register/Login)**
 - ✅ FastAPI ile REST API servisi
 - ✅ Docker containerization
 - ✅ Kapsamlı test coverage
 - ✅ Türkçe dokümantasyon
 - ✅ Agent-friendly proje yapısı
+- ✅ **Next.js entegrasyona hazır**
 
 ## 🏗️ Proje Yapısı
 
@@ -31,7 +36,15 @@ film-sentiment-py/
 │   └── utils/
 │       └── logger.py          # Loglama sistemi
 ├── api/                       # FastAPI servisi
-│   └── main.py
+│   ├── main.py                # Ana FastAPI app
+│   ├── auth.py                # Auth endpoints
+│   ├── models.py              # Pydantic models
+│   ├── database.py            # MongoDB connection
+│   ├── redis_client.py        # Redis connection (JWT blacklist)
+│   ├── blacklist.py           # JWT token blacklist service
+│   ├── crud.py                # Database operations
+│   ├── dependencies.py        # Auth dependencies
+│   └── auth_utils.py          # JWT utils
 ├── models/                    # Eğitilmiş modeller
 │   ├── model.pkl
 │   ├── vectorizer.pkl
@@ -46,12 +59,18 @@ film-sentiment-py/
 │   ├── SRS.md
 │   └── model_rapor.md
 ├── docs/                      # Dokümantasyon
-│   ├── ARCHITECTURE.md
-│   ├── FEATURES.md
-│   ├── TODO_TRACKING.md
-│   ├── API_DOCUMENTATION.md
-│   ├── DEVELOPMENT_GUIDE.md
-│   └── CHANGELOG.md
+│   ├── PROJECT_PLAN.md        # Master proje planı
+│   ├── ARCHITECTURE.md        # Sistem mimarisi
+│   ├── FEATURES.md            # Feature açıklamaları
+│   ├── API_DOCUMENTATION.md   # API kılavuzu
+│   ├── AUTHENTICATION_GUIDE.md # Auth rehberi
+│   ├── REDIS_BLACKLIST.md     # JWT Blacklist sistemi
+│   ├── REDIS_KURULUM.md       # Redis kurulum
+│   ├── DOCKER_KULLANIM.md     # Docker kılavuzu
+│   ├── ENV_SETUP.md           # Environment variables
+│   ├── BASLANGIC_KILAVUZU.md  # Hızlı başlangıç
+│   ├── TODO_TRACKING.md       # İlerleme takibi
+│   └── CHANGELOG.md           # Versiyon geçmişi
 ├── config.yaml                # Konfigürasyon
 ├── requirements.txt           # Python bağımlılıklar
 ├── Dockerfile                 # Docker image tanımı
@@ -64,6 +83,8 @@ film-sentiment-py/
 
 - Python 3.10+
 - pip
+- **MongoDB** (local veya MongoDB Atlas)
+- **Redis** (JWT blacklist için - opsiyonel ama önerilen)
 - (Opsiyonel) Docker
 
 ### 1. Kurulum
@@ -87,6 +108,27 @@ pip install -r requirements.txt
 
 # NLTK stopwords indir
 python -c "import nltk; nltk.download('stopwords')"
+
+# MongoDB kurulumu (Seçenek 1: Local)
+# MongoDB'yi indirin: https://www.mongodb.com/try/download/community
+
+# veya (Seçenek 2: Docker ile)
+docker run -d -p 27017:27017 --name mongodb mongo:latest
+
+# veya (Seçenek 3: MongoDB Atlas - Cloud)
+# https://www.mongodb.com/cloud/atlas/register adresinden free cluster oluşturun
+
+# Redis kurulumu (JWT Blacklist için - önerilir)
+# Docker ile (en kolay)
+docker run -d -p 6379:6379 --name redis-blacklist redis:7-alpine
+
+# veya Mac: brew install redis && brew services start redis
+# veya Linux: sudo apt-get install redis-server
+
+# Redis kurulumu için detaylı bilgi: docs/REDIS_KURULUM.md
+
+# Environment variables ayarla
+# docs/ENV_SETUP.md dosyasına bakın ve .env oluşturun
 ```
 
 ### 2. Model Eğitimi
@@ -123,31 +165,74 @@ API şu adreste çalışacak: `http://localhost:8000`
 - **Swagger UI:** http://localhost:8000/docs
 - **ReDoc:** http://localhost:8000/redoc
 
-### 4. API Kullanımı
+⚠️ **Önemli:** API artık authentication gerektiriyor! Önce kullanıcı oluşturun ve giriş yapın.
 
-#### Python ile
+### 4. Authentication ve API Kullanımı
 
-```python
-import requests
+#### a) Kullanıcı Kaydı
 
-response = requests.post(
-    "http://localhost:8000/predict",
-    json={"text": "This movie was absolutely fantastic! Great acting and plot."}
-)
-
-print(response.json())
-# {"sentiment": "positive", "confidence": 0.92, "prediction_time_ms": 23}
+```bash
+curl -X POST "http://localhost:8000/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "emre_yilmaz",
+    "email": "emre@example.com",
+    "password": "SecurePass123",
+    "full_name": "Emre Yılmaz",
+    "organization": "AI Research Lab",
+    "role": "user"
+  }'
 ```
 
-#### cURL ile
+#### b) Giriş Yapma (Token Alma)
+
+```bash
+curl -X POST "http://localhost:8000/auth/login" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=emre_yilmaz&password=SecurePass123"
+```
+
+**Response:**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer"
+}
+```
+
+#### c) Sentiment Prediction (Token ile)
 
 ```bash
 curl -X POST "http://localhost:8000/predict" \
   -H "Content-Type: application/json" \
-  -d '{"text": "Terrible movie, waste of time!"}'
+  -H "Authorization: Bearer <ACCESS_TOKEN>" \
+  -d '{"text": "This movie was absolutely fantastic!"}'
 ```
 
-#### Sağlık Kontrolü
+#### Python ile Authentication
+
+```python
+import requests
+
+# 1. Login
+login_response = requests.post(
+    "http://localhost:8000/auth/login",
+    data={"username": "emre_yilmaz", "password": "SecurePass123"}
+)
+token = login_response.json()["access_token"]
+
+# 2. Prediction
+response = requests.post(
+    "http://localhost:8000/predict",
+    headers={"Authorization": f"Bearer {token}"},
+    json={"text": "Great movie!"}
+)
+
+print(response.json())
+# {"sentiment": "positive", "confidence": 0.92, "prediction_time_ms": 23.5}
+```
+
+#### Sağlık Kontrolü (Auth gerektirmez)
 
 ```bash
 curl http://localhost:8000/health
@@ -155,25 +240,66 @@ curl http://localhost:8000/health
 
 ## 🐳 Docker ile Çalıştırma
 
-### Image Oluşturma
+### Hızlı Başlangıç (Docker Compose - Önerilen)
+
+Tüm sistemi (MongoDB + Redis + API) tek komutla başlatın:
 
 ```bash
+# Tüm servisleri başlat
+docker-compose up -d
+
+# Logları izle
+docker-compose logs -f
+
+# Durumu kontrol et
+docker-compose ps
+```
+
+**Başlayan Servisler:**
+| Servis | Port | URL |
+|--------|------|-----|
+| API | 8000 | http://localhost:8000 |
+| MongoDB | 27017 | mongodb://localhost:27017 |
+| Redis | 6379 | redis://localhost:6379 |
+
+### Development Mode (Sadece DB'ler)
+
+```bash
+# Sadece MongoDB + Redis + UI araçları
+docker-compose -f docker-compose.dev.yml up -d
+
+# API'yi local'de çalıştır
+uvicorn api.main:app --reload
+```
+
+**Development UI Araçları:**
+- Redis Commander: http://localhost:8081
+- Mongo Express: http://localhost:8082 (admin/admin123)
+
+### Durdurma
+
+```bash
+# Servisleri durdur (data korunur)
+docker-compose down
+
+# Servisleri durdur + data'yı sil
+docker-compose down -v
+```
+
+### Tek Container (Legacy)
+
+```bash
+# Image oluştur
 docker build -t imdb-sentiment-api .
+
+# Container başlat (MongoDB ve Redis ayrı çalışıyor olmalı!)
+docker run -d -p 8000:8000 \
+  -e MONGO_URL=mongodb://host.docker.internal:27017 \
+  -e REDIS_URL=redis://host.docker.internal:6379 \
+  --name sentiment-api imdb-sentiment-api
 ```
 
-### Container Başlatma
-
-```bash
-docker run -d -p 8000:8000 --name sentiment-api imdb-sentiment-api
-```
-
-### Test
-
-```bash
-curl -X POST "http://localhost:8000/predict" \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Amazing movie!"}'
-```
+📖 **Detaylı Docker Kılavuzu:** [`docs/DOCKER_KULLANIM.md`](docs/DOCKER_KULLANIM.md)
 
 ## 📊 Model Performansı
 
@@ -212,13 +338,20 @@ pytest tests/ --cov=src --cov=api
 
 Detaylı dokümantasyon için `docs/` klasörüne bakın:
 
-- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Sistem mimarisi
-- **[FEATURES.md](docs/FEATURES.md)** - Feature açıklamaları
-- **[API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md)** - API kullanım kılavuzu
-- **[DEVELOPMENT_GUIDE.md](docs/DEVELOPMENT_GUIDE.md)** - Geliştirici rehberi
-- **[TODO_TRACKING.md](docs/TODO_TRACKING.md)** - İlerleme takibi
-- **[PROJECT_PLAN.md](docs/PROJECT_PLAN.md)** - Master planlama dokümanı
-- **[CHANGELOG.md](docs/CHANGELOG.md)** - Versiyon geçmişi
+| Dosya | Açıklama |
+|-------|----------|
+| [PROJECT_PLAN.md](docs/PROJECT_PLAN.md) | 📋 Master proje planı |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 🏗️ Sistem mimarisi |
+| [FEATURES.md](docs/FEATURES.md) | ✨ Feature açıklamaları |
+| [API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md) | 🌐 API kullanım kılavuzu |
+| [AUTHENTICATION_GUIDE.md](docs/AUTHENTICATION_GUIDE.md) | 🔐 Auth sistemi rehberi |
+| [REDIS_BLACKLIST.md](docs/REDIS_BLACKLIST.md) | 🔴 JWT Blacklist sistemi |
+| [REDIS_KURULUM.md](docs/REDIS_KURULUM.md) | ⚙️ Redis kurulum kılavuzu |
+| [DOCKER_KULLANIM.md](docs/DOCKER_KULLANIM.md) | 🐳 Docker kullanım kılavuzu |
+| [ENV_SETUP.md](docs/ENV_SETUP.md) | 🔧 Environment variables |
+| [BASLANGIC_KILAVUZU.md](docs/BASLANGIC_KILAVUZU.md) | 🚀 Hızlı başlangıç |
+| [TODO_TRACKING.md](docs/TODO_TRACKING.md) | ✅ İlerleme takibi |
+| [CHANGELOG.md](docs/CHANGELOG.md) | 📝 Versiyon geçmişi |
 
 ### Raporlar
 
