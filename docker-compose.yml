@@ -1,0 +1,127 @@
+# IMDB Sentiment Analizi - Docker Compose
+# MongoDB + Redis + FastAPI
+#
+# Kullanım:
+#   docker-compose up -d        # Tüm servisleri başlat
+#   docker-compose logs -f      # Logları izle
+#   docker-compose down         # Durdur
+#   docker-compose down -v      # Durdur + volumes sil
+#
+# AI Yazılım Mühendisi: Emre Yılmaz
+# Version: 2.0.0
+
+version: '3.8'
+
+services:
+  # ==========================================================================
+  # MongoDB - User ve Prompt Log Database
+  # ==========================================================================
+  mongodb:
+    image: mongo:7
+    container_name: sentiment-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    environment:
+      # Production'da username/password ekleyin:
+      # MONGO_INITDB_ROOT_USERNAME: admin
+      # MONGO_INITDB_ROOT_PASSWORD: securepassword
+      TZ: Europe/Istanbul
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - sentiment-network
+
+  # ==========================================================================
+  # Redis - JWT Blacklist & Caching
+  # ==========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: sentiment-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    # Production'da password ekleyin:
+    # command: redis-server --appendonly yes --requirepass yourpassword
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - sentiment-network
+
+  # ==========================================================================
+  # FastAPI - Sentiment Analysis API
+  # ==========================================================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sentiment-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # MongoDB bağlantısı (docker network içinde hostname kullan)
+      MONGO_URL: mongodb://mongodb:27017
+      
+      # Redis bağlantısı (docker network içinde hostname kullan)
+      REDIS_URL: redis://redis:6379
+      
+      # JWT Secret Key (Production'da güçlü key kullan!)
+      SECRET_KEY: your-secret-key-change-in-production-use-strong-key
+      
+      # CORS Origins (Next.js frontend için)
+      CORS_ORIGINS: http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000
+      
+      # Python buffering kapalı (log'lar anında görünsün)
+      PYTHONUNBUFFERED: 1
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      # Model dosyaları (eğitilmiş model container dışında kalabilir)
+      - ./models:/app/models:ro
+      # Logs
+      - ./logs:/app/logs
+    networks:
+      - sentiment-network
+
+# ==========================================================================
+# Volumes - Persistent Data
+# ==========================================================================
+volumes:
+  mongodb_data:
+    driver: local
+  mongodb_config:
+    driver: local
+  redis_data:
+    driver: local
+
+# ==========================================================================
+# Networks
+# ==========================================================================
+networks:
+  sentiment-network:
+    driver: bridge
+
