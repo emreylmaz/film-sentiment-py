@@ -1,8 +1,8 @@
 # Feature Dokümantasyonu
 # IMDB Sentiment Analizi Projesi
 
-**Versiyon:** 1.0.0  
-**Son Güncelleme:** 5 Kasım 2025
+**Versiyon:** 2.0.0  
+**Son Güncelleme:** 1 Ocak 2026
 
 ---
 
@@ -36,12 +36,20 @@ Bu doküman, projedeki tüm feature'ların detaylı açıklamalarını içerir. 
 
 ## Feature İndeksi
 
+### Core Features (v1.0.0)
 - [F001: Veri Yükleme ve Hazırlama](#f001-veri-yükleme-ve-hazırlama)
 - [F002: Metin Ön İşleme ve Vektörizasyon](#f002-metin-ön-işleme-ve-vektörizasyon)
 - [F003: Model Eğitimi](#f003-model-eğitimi)
 - [F004: Model Değerlendirme](#f004-model-değerlendirme)
 - [F005: FastAPI Servisi](#f005-fastapi-servisi)
 - [F006: Docker Deployment](#f006-docker-deployment)
+
+### Authentication & Database Features (v2.0.0)
+- [F007: JWT Authentication](#f007-jwt-authentication)
+- [F008: MongoDB Entegrasyonu](#f008-mongodb-entegrasyonu)
+- [F009: Redis JWT Blacklist](#f009-redis-jwt-blacklist)
+- [F010: Merkezi Config Sistemi](#f010-merkezi-config-sistemi)
+- [F011: Docker Compose](#f011-docker-compose)
 
 ---
 
@@ -650,32 +658,217 @@ services:
 
 ---
 
+---
+
+## F007: JWT Authentication
+
+### Tanım
+JWT (JSON Web Token) tabanlı kullanıcı authentication sistemi.
+
+### İlgili Dosyalar
+- `api/auth.py` - Authentication endpoints
+- `api/auth_utils.py` - JWT utilities
+- `api/dependencies.py` - Auth dependencies
+- `api/models.py` - User, Token Pydantic models
+
+### Endpoints
+
+#### `POST /auth/register`
+Yeni kullanıcı kaydı.
+
+**Request:**
+```json
+{
+  "username": "emre_yilmaz",
+  "email": "emre@example.com",
+  "password": "SecurePass123",
+  "full_name": "Emre Yılmaz",
+  "organization": "AI Lab",
+  "role": "user"
+}
+```
+
+#### `POST /auth/login`
+Kullanıcı girişi ve token alma.
+
+**Request:** `application/x-www-form-urlencoded`
+```
+username=emre_yilmaz&password=SecurePass123
+```
+
+**Response:**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer"
+}
+```
+
+#### `POST /auth/logout`
+Çıkış yapma ve token iptal (blacklist).
+
+### Token Yapısı
+```json
+{
+  "sub": "emre_yilmaz",
+  "exp": 1234567890,
+  "jti": "unique-token-id"
+}
+```
+
+---
+
+## F008: MongoDB Entegrasyonu
+
+### Tanım
+Async MongoDB driver ile kullanıcı ve prompt log yönetimi.
+
+### İlgili Dosyalar
+- `api/database.py` - MongoDB connection
+- `api/crud.py` - CRUD operations
+- `api/models.py` - Pydantic models
+
+### Collections
+
+#### Users Collection
+```json
+{
+  "_id": "ObjectId",
+  "username": "emre_yilmaz",
+  "email": "emre@example.com",
+  "hashed_password": "...",
+  "full_name": "Emre Yılmaz",
+  "organization": "AI Lab",
+  "role": "user",
+  "created_at": "2026-01-01T12:00:00",
+  "is_active": true
+}
+```
+
+#### Prompt Logs Collection
+```json
+{
+  "_id": "ObjectId",
+  "user_id": "user_object_id",
+  "username": "emre_yilmaz",
+  "text": "This movie was great!",
+  "sentiment": "positive",
+  "confidence": 0.98,
+  "prediction_time_ms": 15.5,
+  "timestamp": "2026-01-01T12:00:00",
+  "ip_address": "127.0.0.1"
+}
+```
+
+---
+
+## F009: Redis JWT Blacklist
+
+### Tanım
+Logout yapılan token'ları Redis'te blacklist'e ekleyerek gerçek logout sağlar.
+
+### İlgili Dosyalar
+- `api/redis_client.py` - Redis connection
+- `api/blacklist.py` - Blacklist service
+
+### Çalışma Prensibi
+1. Token oluşturulurken unique `jti` (JWT ID) eklenir
+2. Logout yapılınca `blacklist:{jti}` key'i Redis'e eklenir
+3. Her request'te token'ın blacklist'te olup olmadığı kontrol edilir
+4. TTL ile token expire olunca Redis'ten otomatik silinir
+
+### Redis Key Yapısı
+```
+blacklist:{jti} = "user_logout:2026-01-01T12:00:00"
+TTL = token_expire_time - current_time
+```
+
+### Graceful Degradation
+Redis yoksa sistem çökmez, sadece uyarı loglanır ve client-side logout yapılır.
+
+---
+
+## F010: Merkezi Config Sistemi
+
+### Tanım
+YAML ve environment variable'ları birleştiren merkezi konfigürasyon yönetimi.
+
+### İlgili Dosyalar
+- `api/config.py` - Settings manager
+- `config.yaml` - YAML konfigürasyon
+
+### Öncelik Sırası
+1. Environment Variables (en yüksek)
+2. config.yaml
+3. Default değerler
+
+### Kullanım
+```python
+from api.config import settings
+
+print(settings.MONGO_URL)
+print(settings.jwt.secret_key)
+print(settings.redis.url)
+```
+
+### Konfigürasyon Grupları
+- `settings.database` - MongoDB ayarları
+- `settings.redis` - Redis ayarları
+- `settings.jwt` - JWT ayarları
+- `settings.cors` - CORS ayarları
+- `settings.api` - API ayarları
+
+---
+
+## F011: Docker Compose
+
+### Tanım
+MongoDB, Redis ve API'yi tek komutla çalıştırma.
+
+### İlgili Dosyalar
+- `docker-compose.yml` - Production setup
+- `docker-compose.dev.yml` - Development setup
+
+### Servisler
+
+| Servis | Port | Açıklama |
+|--------|------|----------|
+| API | 8000 | FastAPI |
+| MongoDB | 27017 | Database |
+| Redis | 6379 | JWT Blacklist |
+| Redis Commander | 8081 | Redis UI (dev) |
+| Mongo Express | 8082 | MongoDB UI (dev) |
+
+### Kullanım
+```bash
+# Production
+docker-compose up -d
+
+# Development
+docker-compose -f docker-compose.dev.yml up -d
+```
+
+---
+
 ## Gelecek Feature'lar
 
-### F007: Batch Prediction API (Planlanıyor)
+### F012: Batch Prediction API (Planlanıyor)
 
 **Tanım:** Birden fazla metin için toplu tahmin.
 
 **Endpoint:** `POST /predict/batch`
 
-**Request:**
-```json
-{
-  "texts": ["Text 1", "Text 2", "Text 3"]
-}
-```
+### F013: Next.js Frontend (Planlanıyor)
 
-### F008: Model Retraining Pipeline (Planlanıyor)
+**Tanım:** Web arayüzü ile kullanıcı deneyimi.
 
-**Tanım:** Yeni veri ile otomatik model güncelleme.
-
-### F009: Multi-language Support (Planlanıyor)
+### F014: Multi-language Support (Planlanıyor)
 
 **Tanım:** Türkçe, İspanyolca vb. dil desteği.
 
 ---
 
-**Doküman Hazırlayan:** AI Yazılım Mühendisi  
-**Son Güncelleme:** 5 Kasım 2025
+**Doküman Hazırlayan:** AI Yazılım Mühendisi: Emre Yılmaz  
+**Son Güncelleme:** 1 Ocak 2026
 
 
