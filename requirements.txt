@@ -13,6 +13,7 @@ pydantic>=2.3.0,<3.0.0
 
 # Utility
 PyYAML>=6.0,<7.0
+python-dotenv>=1.0.0,<2.0.0                  # .env dosyası okuma
 python-multipart>=0.0.6,<0.1.0
 
 # Visualization (notebooks için)
@@ -26,5 +27,22 @@ httpx>=0.24.0,<0.30.0
 # Code Quality (opsiyonel)
 black>=23.9.0,<25.0.0
 flake8>=6.1.0,<8.0.0
+
+# Authentication & Database (Next.js Integration)
+motor>=3.3.0,<4.0.0                          # Async MongoDB driver
+pymongo>=4.6.0,<5.0.0                        # MongoDB driver
+python-jose[cryptography]>=3.3.0,<4.0.0     # JWT token support
+passlib>=1.7.4,<2.0.0                        # Password hashing
+bcrypt>=4.0.0,<5.0.0                         # bcrypt backend for passlib
+
+# Redis (JWT Blacklist & Caching)
+redis>=5.0.0,<6.0.0                          # Async Redis client
+
+# MongoDB ve Authentication
+motor>=3.3.0,<4.0.0              # Async MongoDB driver
+pymongo>=4.6.0,<5.0.0            # MongoDB driver
+python-jose[cryptography]>=3.3.0,<4.0.0  # JWT
+passlib[bcrypt]>=1.7.4,<2.0.0    # Password hashing
+email-validator>=2.0.0,<3.0.0    # Email validation for Pydantic
 
 

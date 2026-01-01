@@ -55,15 +55,21 @@ def setup_logger(
     
     # File handler (eğer log_file belirtilmişse)
     if log_file or log_dir:
-        # Log klasörünü oluştur
-        os.makedirs(log_dir, exist_ok=True)
-        
         # Log dosya adı oluştur
         if log_file is None:
             timestamp = datetime.now().strftime("%Y%m%d")
             log_file = f"{name}_{timestamp}.log"
         
-        log_path = os.path.join(log_dir, log_file)
+        # Eğer log_file zaten path içeriyorsa (örn: "logs/xxx.log"), 
+        # log_dir kullanma
+        if os.path.dirname(log_file):
+            log_path = log_file
+            # Klasörü oluştur
+            os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        else:
+            # Log klasörünü oluştur
+            os.makedirs(log_dir, exist_ok=True)
+            log_path = os.path.join(log_dir, log_file)
         
         # UTF-8 encoding ile file handler
         file_handler = logging.FileHandler(

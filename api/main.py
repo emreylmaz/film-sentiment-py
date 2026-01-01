@@ -2,17 +2,36 @@
 IMDB Sentiment Analizi FastAPI Servisi
 
 Bu servis, eğitilmiş sentiment analizi modelini REST API olarak sunar.
+JWT authentication ve MongoDB ile prompt logging destekler.
 """
 
+# .env dosyasını en başta yükle (diğer import'lardan önce!)
+from dotenv import load_dotenv
+load_dotenv()  # .env dosyasını oku
+
 import os
+
+# Merkezi config (yaml + env)
+from api.config import settings
 import pickle
 import json
 import time
 from typing import Optional
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field
+from pydantic import field_validator  # Yeni Pydantic API
 import uvicorn
+
+# Proje modülleri
+from api.database import connect_to_mongo, close_mongo_connection, get_database, create_indexes
+from api.redis_client import connect_to_redis, close_redis_connection, get_redis_info  # Redis bağlantısı
+from api.blacklist import get_blacklist_stats  # Blacklist istatistikleri
+from api.models import UserInDB, PromptLogCreate
+from api.dependencies import get_current_user
+from api.crud import create_prompt_log
+from api.auth import router as auth_router
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 # Logger
 import logging
@@ -21,10 +40,10 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# Pydantic Modelleri
+# Pydantic Modelleri (Sentiment Prediction için)
 # ============================================================================
 
-class PredictionRequest(BaseModel):
+class TextInput(BaseModel):
     """
     Tahmin isteği modeli.
     
@@ -38,22 +57,23 @@ class PredictionRequest(BaseModel):
         description="Film yorumu metni (10-5000 karakter arası)"
     )
     
-    @validator('text')
-    def text_must_not_be_empty(cls, v):
+    @field_validator('text')
+    @classmethod
+    def text_must_not_be_empty(cls, v: str) -> str:
         """Metnin boş olmamasını kontrol eder."""
         if not v or not v.strip():
             raise ValueError('Text alanı boş olamaz')
         return v.strip()
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "text": "This movie was absolutely fantastic! The acting was superb and the plot kept me engaged throughout."
             }
         }
 
 
-class PredictionResponse(BaseModel):
+class PredictionOutput(BaseModel):
     """
     Tahmin yanıtı modeli.
     
@@ -64,31 +84,26 @@ class PredictionResponse(BaseModel):
     """
     sentiment: str = Field(..., description="Tahmin edilen sentiment")
     confidence: float = Field(..., ge=0, le=1, description="Güven skoru")
-    prediction_time_ms: int = Field(..., description="Tahmin süresi (ms)")
+    prediction_time_ms: float = Field(..., description="Tahmin süresi (ms)")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "sentiment": "positive",
                 "confidence": 0.92,
-                "prediction_time_ms": 23
+                "prediction_time_ms": 23.5
             }
         }
 
 
-class HealthResponse(BaseModel):
-    """
-    Sağlık kontrolü yanıtı.
-    
-    Attributes:
-        status: Servis durumu
-        model_loaded: Model yüklenmiş mi
-        model_version: Model versiyonu
-    """
-    status: str
-    model_loaded: bool
-    model_version: Optional[str] = None
-    model_type: Optional[str] = None
+class ModelInfo(BaseModel):
+    """Model bilgileri response modeli."""
+    model_type: str
+    version: str
+    training_date: str
+    metrics: dict
+    max_features: int
+    ngram_range: list
 
 
 # ============================================================================
@@ -180,14 +195,10 @@ class ModelManager:
             proba = self._model.predict_proba(vector)[0]
             # Pozitif sınıfın olasılığını al
             confidence = float(proba[1] if prediction == 'positive' else proba[0])
-        elif hasattr(self._model, 'decision_function'):
-            decision = self._model.decision_function(vector)[0]
-            # Sigmoid ile olasılığa çevir
-            confidence = float(1 / (1 + np.exp(-abs(decision))))
         else:
             confidence = 1.0  # Default
         
-        prediction_time = int((time.time() - start_time) * 1000)  # ms
+        prediction_time = (time.time() - start_time) * 1000  # ms
         
         return {
             'sentiment': prediction,
@@ -213,20 +224,33 @@ class ModelManager:
 # App oluştur
 app = FastAPI(
     title="IMDB Sentiment Analizi API",
-    description="Film yorumları için sentiment analizi servisi. "
-                "Pozitif veya negatif sentiment tahmini yapar.",
-    version="1.0.0",
+    description="""
+Film yorumları için sentiment analizi servisi.
+
+**Features:**
+* JWT Authentication
+* Sentiment Prediction (Positive/Negative)
+* Prompt Logging
+* User Management
+
+**Authentication:**
+* Register: POST /auth/register
+* Login: POST /auth/login
+* Protected endpoints require Bearer token
+    """,
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
 )
 
 # CORS middleware ekle
+# Config'den CORS ayarlarını al (env > yaml > default)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Production'da spesifik origin'ler belirtilmeli
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=settings.cors.allow_credentials,
+    allow_methods=settings.cors.allow_methods,
+    allow_headers=settings.cors.allow_headers,
 )
 
 # Model manager
@@ -234,14 +258,14 @@ model_manager = ModelManager()
 
 
 # ============================================================================
-# Startup Event
+# Startup & Shutdown Events
 # ============================================================================
 
 @app.on_event("startup")
 async def startup_event():
     """
     Uygulama başlangıcında çalışır.
-    Model ve preprocessor'ı yükler.
+    Model, preprocessor, MongoDB ve Redis bağlantılarını yükler.
     """
     logger.info("=" * 60)
     logger.info("FastAPI Servisi Başlatılıyor...")
@@ -253,12 +277,41 @@ async def startup_event():
         model_manager.load_preprocessor()
         model_manager.load_metadata()
         
+        # MongoDB'ye bağlan
+        await connect_to_mongo()
+        
+        # Index'leri oluştur
+        await create_indexes()
+        
+        # Redis'e bağlan (JWT blacklist için)
+        await connect_to_redis()
+        
         logger.info("✓ Tüm bileşenler başarıyla yüklendi")
         logger.info("=" * 60)
         
     except Exception as e:
         logger.error(f"✗ Başlatma hatası: {str(e)}")
         raise
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """
+    Uygulama kapanırken çalışır.
+    MongoDB ve Redis bağlantılarını kapatır.
+    """
+    logger.info("Uygulama kapatılıyor...")
+    await close_mongo_connection()
+    logger.info("✓ MongoDB bağlantısı kapatıldı")
+    await close_redis_connection()
+    logger.info("✓ Redis bağlantısı kapatıldı")
+
+
+# ============================================================================
+# Auth Router'ı Dahil Et
+# ============================================================================
+
+app.include_router(auth_router)
 
 
 # ============================================================================
@@ -271,35 +324,66 @@ async def root():
     Ana endpoint - API bilgilerini döndürür.
     """
     return {
-        "message": "IMDB Sentiment Analizi API",
-        "version": "1.0.0",
+        "message": "IMDB Sentiment Analizi API v2.0",
         "status": "running",
+        "features": [
+            "JWT Authentication",
+            "Sentiment Analysis",
+            "Prompt Logging",
+            "User Management"
+        ],
         "endpoints": {
-            "prediction": "/predict",
-            "health": "/health",
+            "auth": {
+                "register": "POST /auth/register",
+                "login": "POST /auth/login",
+                "me": "GET /auth/me (protected)"
+            },
+            "prediction": "POST /predict (protected)",
+            "health": "GET /health",
+            "model_info": "GET /model/info",
             "documentation": "/docs"
         }
     }
 
 
-@app.post("/predict", response_model=PredictionResponse, tags=["Tahmin"])
-async def predict_sentiment(request: PredictionRequest):
+@app.post("/predict", response_model=PredictionOutput, tags=["Tahmin"])
+async def predict_sentiment(
+    input_data: TextInput,
+    request: Request,
+    current_user: UserInDB = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
     """
     Film yorumu için sentiment tahmini yapar.
     
-    - **text**: Analiz edilecek film yorumu (10-5000 karakter)
+    **Protected Endpoint:** JWT token gereklidir.
     
-    Returns:
-        - **sentiment**: Tahmin edilen sentiment (positive/negative)
-        - **confidence**: Güven skoru (0-1 arası)
-        - **prediction_time_ms**: Tahmin süresi (milisaniye)
+    **Authorization Header:**
+    ```
+    Authorization: Bearer <access_token>
+    ```
     
-    Örnek:
-        ```json
-        {
-            "text": "This movie was absolutely fantastic!"
-        }
-        ```
+    **Request Body:**
+    ```json
+    {
+        "text": "This movie was absolutely fantastic!"
+    }
+    ```
+    
+    **Response:**
+    ```json
+    {
+        "sentiment": "positive",
+        "confidence": 0.92,
+        "prediction_time_ms": 23.5
+    }
+    ```
+    
+    **Process:**
+    1. Authenticate user via JWT token
+    2. Predict sentiment using ML model
+    3. Log prediction to database
+    4. Return prediction result
     """
     try:
         # Model yüklü mü kontrol et
@@ -310,41 +394,87 @@ async def predict_sentiment(request: PredictionRequest):
             )
         
         # Tahmin yap
-        result = model_manager.predict(request.text)
+        result = model_manager.predict(input_data.text)
         
-        logger.info(f"Tahmin: {result['sentiment']} (güven: {result['confidence']:.2f})")
+        logger.info(f"Tahmin: {result['sentiment']} (güven: {result['confidence']:.2f}) - User: {current_user.username}")
         
-        return result
+        # Prompt log oluştur
+        log_data = PromptLogCreate(
+            text=input_data.text,
+            sentiment=result['sentiment'],
+            confidence=result['confidence'],
+            prediction_time_ms=result['prediction_time_ms']
+        )
+        
+        # Log'u veritabanına kaydet
+        try:
+            ip_address = request.client.host if request.client else None
+            await create_prompt_log(db, log_data, current_user.id, current_user.username, ip_address)
+        except Exception as log_error:
+            # Logging hatası prediction'ı etkilemez
+            logger.error(f"Prompt log kaydetme hatası: {log_error}")
+        
+        return PredictionOutput(**result)
         
     except HTTPException:
-        # HTTPException'ları olduğu gibi geçir (503, 400, vb.)
         raise
     except Exception as e:
-        logger.error(f"Tahmin hatası: {str(e)}")
+        logger.error(f"Tahmin hatası: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Tahmin sırasında hata oluştu: {str(e)}"
         )
 
 
-@app.get("/health", response_model=HealthResponse, tags=["Sistem"])
+@app.get("/health", tags=["Sistem"])
 async def health_check():
     """
     Servis sağlık kontrolü.
     
-    Model yüklenmiş mi ve servis çalışıyor mu kontrol eder.
+    Model, MongoDB, Redis durumlarını kontrol eder.
+    
+    **Returns:**
+    - status: Genel sağlık durumu
+    - model_loaded: Model yüklenmiş mi
+    - database_connected: MongoDB bağlantısı
+    - redis_connected: Redis bağlantısı (JWT blacklist için)
+    - redis_info: Redis detay bilgileri
+    - blacklist_stats: Aktif blacklist sayısı
     """
     metadata = model_manager.metadata
     
+    # MongoDB durumu
+    db_connected = True
+    try:
+        db = get_database()
+        await db.command("ping")
+    except:
+        db_connected = False
+    
+    # Redis durumu ve blacklist stats
+    redis_info = await get_redis_info()
+    blacklist_stats = await get_blacklist_stats()
+    
+    # Genel status
+    is_healthy = (
+        model_manager.is_loaded and 
+        db_connected
+        # Redis opsiyonel, health'i etkilemez
+    )
+    
     return {
-        "status": "healthy" if model_manager.is_loaded else "unhealthy",
+        "status": "healthy" if is_healthy else "unhealthy",
         "model_loaded": model_manager.is_loaded,
         "model_version": metadata.get("version"),
-        "model_type": metadata.get("model_type")
+        "model_type": metadata.get("model_type"),
+        "database_connected": db_connected,
+        "redis_connected": redis_info.get("available", False),
+        "redis_info": redis_info,
+        "blacklist_stats": blacklist_stats
     }
 
 
-@app.get("/model/info", tags=["Model"])
+@app.get("/model/info", response_model=ModelInfo, tags=["Model"])
 async def model_info():
     """
     Model hakkında detaylı bilgi döndürür.
@@ -357,14 +487,48 @@ async def model_info():
     
     metadata = model_manager.metadata
     
-    return {
-        "model_name": metadata.get("model_name"),
-        "model_type": metadata.get("model_type"),
-        "version": metadata.get("version"),
-        "training_date": metadata.get("training_date"),
-        "metrics": metadata.get("metrics", {}),
-        "vocabulary_size": metadata.get("vocabulary_size")
-    }
+    return ModelInfo(
+        model_type=metadata.get("model_type", "unknown"),
+        version=metadata.get("version", "unknown"),
+        training_date=metadata.get("training_date", "unknown"),
+        metrics=metadata.get("metrics", {}),
+        max_features=metadata.get("max_features", 0),
+        ngram_range=metadata.get("ngram_range", [])
+    )
+
+
+# ============================================================================
+# User Stats Endpoint (Opsiyonel - Analytics için)
+# ============================================================================
+
+@app.get("/stats/me", tags=["İstatistikler"])
+async def get_my_stats(
+    current_user: UserInDB = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """
+    Mevcut kullanıcının sentiment analizi istatistiklerini döndürür.
+    
+    **Protected Endpoint:** JWT token gereklidir.
+    
+    **Returns:**
+    - Toplam tahmin sayısı
+    - Pozitif/negatif dağılımı
+    - Ortalama güven skoru
+    - Ortalama tahmin süresi
+    """
+    from api.crud import get_user_statistics
+    
+    try:
+        stats = await get_user_statistics(db, current_user.id)
+        logger.info(f"İstatistikler getir ildi: {current_user.username}")
+        return stats
+    except Exception as e:
+        logger.error(f"İstatistik getirme hatası: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="İstatistikler getirilemedi"
+        )
 
 
 # ============================================================================
@@ -372,13 +536,11 @@ async def model_info():
 # ============================================================================
 
 if __name__ == "__main__":
-    # Servisi başlat
+    # Servisi başlat (config'den ayarları al)
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=False,
-        log_level="info"
+        host=settings.api.host,
+        port=settings.api.port,
+        reload=settings.api.debug,
+        log_level=settings.api.log_level.lower()
     )
-
-
