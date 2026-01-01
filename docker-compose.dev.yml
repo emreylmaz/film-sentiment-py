@@ -1,0 +1,93 @@
+# IMDB Sentiment Analizi - Development Docker Compose
+# Sadece MongoDB + Redis (API local'de çalışır)
+#
+# Kullanım:
+#   docker-compose -f docker-compose.dev.yml up -d    # DB'leri başlat
+#   uvicorn api.main:app --reload                      # API'yi local'de çalıştır
+#
+# AI Yazılım Mühendisi: Emre Yılmaz
+# Version: 2.0.0
+
+version: '3.8'
+
+services:
+  # ==========================================================================
+  # MongoDB - User ve Prompt Log Database
+  # ==========================================================================
+  mongodb:
+    image: mongo:7
+    container_name: sentiment-mongodb-dev
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_dev_data:/data/db
+    environment:
+      TZ: Europe/Istanbul
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ==========================================================================
+  # Redis - JWT Blacklist & Caching
+  # ==========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: sentiment-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # ==========================================================================
+  # Redis Commander - Redis UI (opsiyonel, development için)
+  # http://localhost:8081 adresinden Redis'i görsel olarak yönetebilirsin
+  # ==========================================================================
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: sentiment-redis-commander
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    depends_on:
+      - redis
+
+  # ==========================================================================
+  # Mongo Express - MongoDB UI (opsiyonel, development için)
+  # http://localhost:8082 adresinden MongoDB'yi görsel olarak yönetebilirsin
+  # ==========================================================================
+  mongo-express:
+    image: mongo-express:latest
+    container_name: sentiment-mongo-express
+    restart: unless-stopped
+    ports:
+      - "8082:8081"
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://mongodb:27017
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: admin123
+    depends_on:
+      - mongodb
+
+# ==========================================================================
+# Volumes - Persistent Data
+# ==========================================================================
+volumes:
+  mongodb_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+
