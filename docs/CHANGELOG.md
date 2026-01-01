@@ -29,10 +29,112 @@ Format: [Semantic Versioning](https://semver.org/lang/tr/)
 ### Planlanıyor
 - BERT model entegrasyonu
 - Batch prediction endpoint (`POST /predict/batch`)
-- Redis caching desteği
-- API key authentication
 - Prometheus metrics
 - Web dashboard
+- Rate limiting
+
+---
+
+## [2.0.0] - 2026-01-01
+
+### 🚀 Major Release: Authentication & Database Integration
+
+Bu versiyon, projeyi production-ready hale getiren büyük bir güncellemedir.
+
+### ✨ Eklenenler
+
+**Authentication Sistemi:**
+- ✅ JWT (JSON Web Token) authentication
+- ✅ User registration (`POST /auth/register`)
+- ✅ User login (`POST /auth/login`)
+- ✅ User logout (`POST /auth/logout`)
+- ✅ Protected endpoints (Bearer token)
+- ✅ Password hashing (bcrypt)
+- ✅ Token expiration (24 saat default)
+
+**Redis JWT Blacklist (Best Practice):**
+- ✅ Gerçek logout sistemi (token iptal)
+- ✅ Redis ile token blacklist
+- ✅ TTL ile otomatik temizleme
+- ✅ Unique token ID (jti claim)
+- ✅ Graceful degradation (Redis yoksa çalışır)
+- ✅ Blacklist istatistikleri (`/health` endpoint)
+
+**MongoDB Entegrasyonu:**
+- ✅ Async MongoDB driver (motor)
+- ✅ User collection (username, email, password, role, organization)
+- ✅ Prompt logging collection (user_id, text, sentiment, confidence, timestamp)
+- ✅ Database indexes
+- ✅ CRUD operations
+
+**Merkezi Config Sistemi:**
+- ✅ `api/config.py` - Settings manager
+- ✅ `config.yaml` + `.env` desteği
+- ✅ Environment variable override
+- ✅ Typed configuration (dataclasses)
+
+**Docker Compose:**
+- ✅ `docker-compose.yml` - Production (MongoDB + Redis + API)
+- ✅ `docker-compose.dev.yml` - Development (DB'ler + UI araçları)
+- ✅ Redis Commander UI (port 8081)
+- ✅ Mongo Express UI (port 8082)
+- ✅ Health checks
+- ✅ Volume persistence
+
+**Yeni API Modülleri:**
+- ✅ `api/auth.py` - Authentication endpoints
+- ✅ `api/models.py` - Pydantic models (User, Token, PromptLog)
+- ✅ `api/database.py` - MongoDB connection
+- ✅ `api/redis_client.py` - Redis connection
+- ✅ `api/blacklist.py` - JWT blacklist service
+- ✅ `api/crud.py` - Database operations
+- ✅ `api/dependencies.py` - Auth dependencies
+- ✅ `api/auth_utils.py` - JWT utilities
+- ✅ `api/config.py` - Merkezi config manager
+
+**Yeni Dokümantasyon:**
+- ✅ `docs/REDIS_BLACKLIST.md` - JWT Blacklist sistemi
+- ✅ `docs/REDIS_KURULUM.md` - Redis kurulum kılavuzu
+- ✅ `docs/DOCKER_KULLANIM.md` - Docker kullanım kılavuzu
+- ✅ `docs/ENV_SETUP.md` - Environment variables
+- ✅ `docs/AUTHENTICATION_GUIDE.md` - Auth sistemi rehberi
+- ✅ `docs/QUICKSTART_AUTH.md` - Hızlı başlangıç
+
+### 🔄 Değiştirilenler
+- `api/main.py` - Authentication, MongoDB, Redis entegrasyonu
+- `requirements.txt` - Yeni dependencies (motor, redis, passlib, python-jose)
+- `Dockerfile` - Redis, MongoDB env vars eklendi
+- `README.md` - Docker Compose, Auth dokümantasyonu
+- Dokümanlar `docs/` klasörüne taşındı
+
+### 🐛 Düzeltilenler
+- bcrypt 5.0.0 → 4.3.0 (passlib uyumluluk)
+- Logger path sorunu düzeltildi (çift logs/ path)
+- Config circular import sorunu çözüldü
+
+### 📦 Yeni Dependencies
+```
+motor>=3.3.0,<4.0.0          # Async MongoDB
+pymongo>=4.6.0,<5.0.0        # MongoDB driver
+python-jose[cryptography]    # JWT
+passlib>=1.7.4               # Password hashing
+bcrypt>=4.0.0,<5.0.0         # bcrypt backend
+redis>=5.0.0,<6.0.0          # Redis client
+python-dotenv>=1.0.0         # .env dosyası
+```
+
+### ⚠️ Breaking Changes
+- API artık authentication gerektiriyor
+- `/predict` endpoint'i protected (Bearer token gerekli)
+- MongoDB bağlantısı gerekli
+- Yeni environment variables (MONGO_URL, REDIS_URL, SECRET_KEY)
+
+### 🔒 Güvenlik
+- JWT token authentication
+- Password hashing (bcrypt)
+- Token blacklist (logout)
+- CORS configuration
+- Input validation (Pydantic)
 
 ---
 
