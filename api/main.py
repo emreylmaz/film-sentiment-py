@@ -498,6 +498,74 @@ async def model_info():
 
 
 # ============================================================================
+# Prompt History Endpoint
+# ============================================================================
+
+@app.get("/prompts/history", tags=["Prompt Geçmişi"])
+async def get_prompt_history(
+    limit: int = 10,
+    skip: int = 0,
+    current_user: UserInDB = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """
+    Kullanıcının sentiment analizi geçmişini döndürür.
+    
+    **Protected Endpoint:** JWT token gereklidir.
+    
+    **Query Parameters:**
+    - limit: Sayfa başına kayıt sayısı (default: 10, max: 100)
+    - skip: Atlanacak kayıt sayısı (pagination için)
+    
+    **Returns:**
+    - total: Toplam kayıt sayısı
+    - items: Prompt log listesi
+    """
+    from api.crud import get_user_prompt_logs
+    
+    # Limit kontrolü
+    if limit > 100:
+        limit = 100
+    if limit < 1:
+        limit = 10
+    if skip < 0:
+        skip = 0
+    
+    try:
+        logs = await get_user_prompt_logs(db, current_user.id, limit, skip)
+        
+        # Toplam kayıt sayısını al
+        total = await db.prompt_logs.count_documents({"user_id": current_user.id})
+        
+        # Response formatla
+        items = []
+        for log in logs:
+            items.append({
+                "id": log.id,
+                "text": log.text,
+                "sentiment": log.sentiment,
+                "confidence": log.confidence,
+                "prediction_time_ms": log.prediction_time_ms,
+                "timestamp": log.timestamp.isoformat(),
+                "ip_address": log.ip_address
+            })
+        
+        logger.info(f"History getirildi: {current_user.username}, {len(items)} kayıt")
+        
+        return {
+            "total": total,
+            "items": items
+        }
+        
+    except Exception as e:
+        logger.error(f"History getirme hatası: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Geçmiş kayıtları getirilemedi"
+        )
+
+
+# ============================================================================
 # User Stats Endpoint (Opsiyonel - Analytics için)
 # ============================================================================
 

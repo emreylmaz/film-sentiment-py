@@ -489,3 +489,6 @@ Bu proje akademik amaçlı geliştirilmiştir.
 **⭐ Projeyi beğendiyseniz yıldız vermeyi unutmayın!**
 
 
+```bash
+.venv\Scripts\activate; python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+```
